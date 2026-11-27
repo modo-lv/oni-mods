@@ -82,22 +82,26 @@ public class Main : UserMod2 {
   /// <see cref="Diggable.GetApproximateDigTime"/> is hardcoded to return near infinity for material hardness 255,
   /// so we set have to set it to something lower to trigger an actual calculation. 
   /// </remarks>
-  [HarmonyPatch(typeof(Diggable), nameof(Diggable.GetApproximateDigTime))]
+  [HarmonyPatch(typeof(Diggable), nameof(Diggable.GetApproximateDigTime), typeof(Diggable.DigTargetInfo))]
   class GetApproximateDigTime {
 
-    static void Prefix(Int32 cell) {
-      if (!cell.Element().IsNeutronium()) return;
-      if (DigTimes.Get(cell, Single.MaxValue) < Single.MaxValue) return;
+    static void Prefix(Diggable.DigTargetInfo digTargetInfo, ref Diggable __instance) {
+      var element = __instance.GetTargetElement();
+      if (element.IsNeutronium()) return;
 
+      var cell = __instance.Cell();
+      if (DigTimes.Get(cell, Single.MaxValue) < Single.MaxValue) return;
       Log.Debug($"Dig time for cell {cell} (mass: {Grid.Mass[cell]}) not calculated yet, " +
                 $"setting hardness to that of Obsidian.");
-      cell.Element().hardness = Obsidian.Element().hardness;
+      element.hardness = Obsidian.Element().hardness;
     }
 
 
-    static void Postfix(Int32 cell, ref Single __result) {
-      if (!cell.Element().IsNeutronium()) return;
+    static void Postfix(Diggable.DigTargetInfo digTargetInfo, ref Diggable __instance, ref Single __result) {
+      var element = __instance.GetTargetElement();
+      if (!element.IsNeutronium()) return;
 
+      var cell = __instance.Cell();
       if (DigTimes.Get(cell, Single.MaxValue) < Single.MaxValue) {
         __result = DigTimes[cell];
         Log.Debug($"Dig time for cell {cell} already known: {__result}");
@@ -105,7 +109,7 @@ public class Main : UserMod2 {
         DigTimes[cell] = __result *= Settings.DigTimeMultiplier;
         Log.Debug(
           $"Dig time for cell {cell} calculated to {__result}, restoring Neutronium hardness.");
-        cell.Element().hardness = Unobtanium.Element().hardness;
+        element.hardness = Unobtanium.Element().hardness;
       }
     }
   }
@@ -162,8 +166,8 @@ public class Main : UserMod2 {
     static void Postfix(ref Diggable __instance) {
       if (!__instance.IsNeutronium()) return;
 
-      // Neutronium's work time is set to infinity, so we have to override it manually. 
-      __instance.SetWorkTime(Diggable.GetApproximateDigTime(__instance.Cell()));
+      // Neutronium's work time is set to infinity, so we have to override it manually.
+      __instance.SetWorkTime(__instance.GetApproximateDigTime());
       __instance.WorkTimeRemaining = __instance.workTime;
       // Skill requirement has been determined, restore hardness to original
       __instance.Element().hardness = Unobtanium.Element().hardness;
